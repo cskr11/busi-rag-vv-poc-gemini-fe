@@ -1,66 +1,50 @@
-import Image from "next/image";
-import styles from "./page.module.css";
+import React from 'react';
+import RiskChat from './components/RiskChat';
 
-export default function Home() {
+// Optional initial response (can remove or set to undefined)
+const initialResponse = {
+  query: 'Which companies are having the high priority risk?',
+  status: 'Success',
+  count: 5,
+  context: [
+    {
+      content:
+        'Risk Finding for **IBM** (File: ibm).\nCategory: Government Restrictions / CONTESTED INDUSTRY: Presence in a contested industry\nPriority: 4\nFinding: Organization is listed as a member of Semi.org, a semiconductor global industry association that facilitates collaboration and IP sharing across the semiconductor industry. Membership includes western and Chinese entities across the semiconductor industry. The company incurs risk from operations within a contested industry.\nSource: BSD\nDUNS: N/A',
+      metadata: {
+        company_name: 'IBM',
+        risk_category: 'Government Restrictions',
+        risk_subcategory:
+          'CONTESTED INDUSTRY: Presence in a contested industry',
+        priority: 4,
+        doc_type: 'RiskFinding',
+        source_name: 'BSD',
+        duns_id: 'N/A',
+        file_source_tag: 'ibm',
+        business_id: '95c71582-c539-4089-8a2f-9592ebefabf2',
+      },
+    },
+    {
+      content:
+        'Risk Finding for **IBM** (File: ibm).\nCategory: Subversion, Exploitation, Espionage / US SBIR grant applicant, public discoverability\nPriority: 4\nFinding: Company is listed as a past or present applicant for a US SBIR grant.\nSource: BSD\nDUNS: N/A',
+      metadata: {
+        company_name: 'IBM',
+        risk_category: 'Subversion, Exploitation, Espionage',
+        risk_subcategory: 'US SBIR grant applicant, public discoverability',
+        priority: 4,
+        doc_type: 'RiskFinding',
+        source_name: 'BSD',
+        duns_id: 'N/A',
+        file_source_tag: 'ibm',
+        business_id: '95c71582-c539-4089-8a2f-9592ebefabf2',
+      },
+    },
+  ],
+};
+
+export default function Page() {
   return (
-    <div className={styles.page}>
-      <main className={styles.main}>
-        <Image
-          className={styles.logo}
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className={styles.intro}>
-          <h1>To get started, edit the page.tsx file.</h1>
-          <p>
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className={styles.ctas}>
-          <a
-            className={styles.primary}
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className={styles.logo}
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className={styles.secondary}
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+    <main style={{ padding: 20 }}>
+      <RiskChat initialResponse={initialResponse} />
+    </main>
   );
 }
