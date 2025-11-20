@@ -12,12 +12,17 @@ import {
   Card,
   CardContent,
   Divider,
+  CircularProgress, // Added for loading state
 } from '@mui/material';
 
 import SendIcon from '@mui/icons-material/Send';
 
-const API_URL = 'http://localhost:8080';
+// API URL should point to your FastAPI service
+const API_URL = 'http://localhost:8000';
 
+// --- Frontend Data Structures ---
+
+// Matches the backend's Context Pydantic model
 type RiskMetadata = {
   company_name: string;
   risk_category: string;
@@ -35,10 +40,17 @@ type RiskContextItem = {
   metadata: RiskMetadata;
 };
 
+// The main message type stored in the component's state
 type ChatMessage = {
   role: 'user' | 'assistant';
   content: string;
   context?: RiskContextItem[];
+};
+
+// Matches the required history structure for the backend API
+type BackendChatMessage = {
+  role: 'user' | 'model'; // NOTE: Backend expects 'model' for assistant
+  text: string;
 };
 
 type RiskChatProps = {
@@ -57,60 +69,107 @@ export default function RiskChat({ initialResponse }: RiskChatProps) {
         {
           role: 'assistant',
           content: initialResponse.query
-            ? `Here are the high priority risks for: "${initialResponse.query}"`
+            ? `Here are the initial risk findings for: "${initialResponse.query}"`
             : 'Loaded initial risk data.',
           context: initialResponse.context,
         },
       ];
     }
-    return [
-      { role: 'assistant', content: 'Ask a query to retrieve risk findings.' },
-    ];
+    return [];
   });
-
   const [input, setInput] = useState('');
-  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Scroll to the bottom on new message
   useEffect(() => {
-    scrollToBottom();
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const sendMessage = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isLoading) return;
 
-    const userMessage: ChatMessage = { role: 'user', content: input };
-    setMessages((prev) => [...prev, userMessage]);
+    const newUserMessage: ChatMessage = { role: 'user', content: input };
+    const currentInput = input;
+
+    // 1. Optimistically add the user message to the UI
+    setMessages((prev) => [...prev, newUserMessage]);
+    setInput('');
+    setIsLoading(true);
 
     try {
-      const backendResponse = await axios.post(`${API_URL}/retrieve`, {
-        query: input,
-        k: 5,
-      });
+      // 2. Compile the conversation history for the backend
+      // We map the *current* state (which contains all previous turns)
+      const history: BackendChatMessage[] = messages.map((msg) => ({
+        // Map frontend 'assistant' role to backend 'model' role
+        role: msg.role === 'assistant' ? 'model' : 'user',
+        text: msg.content,
+      }));
 
-      const resp = backendResponse?.data;
-
-      const assistantMessage: ChatMessage = {
-        role: 'assistant',
-        content: resp?.response || 'Here are the results:',
-        context: resp?.context || [],
+      // 3. Construct the full request body
+      const requestBody = {
+        query: currentInput, // The new user message
+        history: history, // All previous messages
+        k: 5, // Example k value
+        // filters: { ... }  // Add filters here if needed
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch (err) {
+      const response = await axios.post(API_URL + '/chat', requestBody);
+      const data = response.data;
+
+      // 4. Create the new assistant message from the API response
+      const newAssistantMessage: ChatMessage = {
+        role: 'assistant',
+        content: data.response,
+        context: data.context || [],
+      };
+
+      // 5. Update state: replace the temporary user message with the full conversation
+      setMessages((prev) => {
+        // Find and replace the temporary user message, then add the assistant response
+        const newMessages = prev.slice(0, prev.length - 1);
+        return [...newMessages, newUserMessage, newAssistantMessage];
+      });
+    } catch (error) {
+      console.error('API Error:', error);
+      // Rollback the optimistic update and show an error message
       setMessages((prev) => [
-        ...prev,
+        ...prev.slice(0, prev.length - 1),
         {
           role: 'assistant',
-          content: 'Error: Could not connect to backend.',
+          content: `Sorry, an error occurred while processing your query. (Error: ${
+            error ?? 'Unknown'
+          })`,
         },
       ]);
+    } finally {
+      setIsLoading(false);
     }
+  };
 
-    setInput('');
+  const getMessageColor = (role: 'user' | 'assistant') =>
+    role === 'user' ? '#bbdefb' : '#e0e0e0';
+
+  const getContextMetadata = (metadata: RiskMetadata) => {
+    return (
+      <Box
+        sx={{
+          mt: 1,
+          p: 1,
+          border: '1px solid #ccc',
+          borderRadius: 1,
+          bgcolor: '#fafafa',
+        }}
+      >
+        <Typography variant='caption'>
+          **{metadata.company_name}** ({metadata.file_source_tag?.toUpperCase()}
+          )
+        </Typography>
+        <Typography variant='caption' display='block'>
+          Category: {metadata.risk_category} | Priority: {metadata.priority}
+        </Typography>
+      </Box>
+    );
   };
 
   return (
@@ -118,100 +177,153 @@ export default function RiskChat({ initialResponse }: RiskChatProps) {
       sx={{
         height: '100vh',
         display: 'flex',
+        flexDirection: 'column',
         justifyContent: 'center',
         alignItems: 'center',
-        bgcolor: '#f3f4f6',
         p: 2,
+        bgcolor: '#f5f5f5',
       }}
     >
       <Paper
-        elevation={4}
+        elevation={3}
         sx={{
-          width: '90%',
+          width: '100%',
           maxWidth: 900,
           height: '90vh',
           display: 'flex',
           flexDirection: 'column',
-          borderRadius: 4,
+          borderRadius: 2,
           overflow: 'hidden',
         }}
       >
-        {/* Chat Messages */}
+        {/* Header */}
         <Box
           sx={{
-            flex: 1,
-            overflowY: 'auto',
-            p: 3,
-            bgcolor: 'white',
+            p: 2,
+            bgcolor: '#1976d2',
+            color: 'white',
+            textAlign: 'center',
           }}
         >
-          {messages.map((msg, index) => (
+          <Typography variant='h6'>Risk Intelligence Chatbot</Typography>
+        </Box>
+
+        {/* Message Area */}
+        <Box
+          sx={{
+            flexGrow: 1,
+            overflowY: 'auto',
+            p: 2,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          {messages.map((message, index) => (
             <Box
               key={index}
               sx={{
                 display: 'flex',
-                justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start',
-                mb: 2,
+                justifyContent:
+                  message.role === 'user' ? 'flex-end' : 'flex-start',
               }}
             >
-              <Box
+              <Paper
+                elevation={1}
                 sx={{
                   maxWidth: '80%',
-                  bgcolor: msg.role === 'user' ? '#DCF8C6' : '#E8EAF6',
-                  p: 2,
-                  borderRadius: 3,
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: getMessageColor(message.role),
                 }}
               >
-                <Typography variant='body1' sx={{ fontWeight: 500 }}>
-                  {msg.role === 'user' ? 'You' : 'AI Assistant'}
-                </Typography>
+                {/* --- START OF FIX: Use dangerouslySetInnerHTML for Markdown rendering --- */}
+                <Box
+                  // We need to use dangerouslySetInnerHTML to render the raw markdown/HTML content
+                  // which is generated by the LLM (e.g., using **bolding** and * lists)
+                  dangerouslySetInnerHTML={{
+                    __html: message.content.replace(/\n/g, '<br />'), // Optional: Convert \n to <br> for better newline display
+                  }}
+                  sx={{
+                    // Apply styles equivalent to Typography variant='body1' for proper display
+                    typography: 'body1',
+                    '& strong': {
+                      fontWeight: 600, // Ensure bold text is prominent
+                    },
+                    // Optional: Style the list items if the markdown is parsed into an unordered list
+                    '& ul': {
+                      paddingLeft: '20px',
+                      marginTop: '8px',
+                      marginBottom: '8px',
+                    },
+                  }}
+                />
+                {/* --- END OF FIX --- */}
 
-                <Typography
-                  variant='body2'
-                  sx={{ mt: 1, whiteSpace: 'pre-wrap' }}
-                >
-                  {msg.content}
-                </Typography>
-
-                {msg.role === 'assistant' &&
-                  msg.context &&
-                  msg.context.map((ctx, i) => (
-                    <Card
-                      key={i}
-                      sx={{ mt: 2, bgcolor: '#fafafa', borderRadius: 3 }}
-                    >
-                      <CardContent>
-                        <Typography
-                          variant='h6'
-                          sx={{ fontWeight: 600, mb: 1 }}
-                        >
-                          {ctx.metadata.company_name}
+                {/* Display Context for Assistant Messages 
+                {message.context && message.context.length > 0 && (
+                    <Box sx={{ mt: 1, pt: 1, borderTop: '1px solid #ccc' }}>
+                        <Typography variant='caption' sx={{ fontWeight: 'bold' }}>
+                            Retrieved Context:
                         </Typography>
+                        {message.context.slice(0, 3).map((ctx, ctxIndex) => (
+                            <Card key={ctxIndex} variant="outlined" sx={{ mt: 1 }}>
+                                <CardContent sx={{ p: 1, '&:last-child': { pb: 1 } }}>
+                                    {getContextMetadata(ctx.metadata)}
+                                    <Typography variant='body2' sx={{ whiteSpace: 'pre-wrap', mt: 0.5 }}>
+                                        {ctx.content.substring(0, 150)}...
+                                    </Typography>
+                                </CardContent>
+                            </Card>
+                        ))}
+                         {message.context.length > 3 && (
+                            <Typography variant='caption' sx={{ display: 'block', mt: 0.5 }}>
+                                + {message.context.length - 3} more context item(s) retrieved.
+                            </Typography>
+                        )}
+                    </Box>
+                )}*/}
 
-                        <Typography variant='body2'>
-                          <strong>Category:</strong>{' '}
-                          {ctx.metadata.risk_category}
-                          <br />
-                          <strong>Subcategory:</strong>{' '}
-                          {ctx.metadata.risk_subcategory}
-                          <br />
-                          <strong>Priority:</strong> {ctx.metadata.priority}
-                        </Typography>
+                {message.context?.map((ctx, i) => (
+                  <Card
+                    key={i}
+                    sx={{ mt: 2, bgcolor: '#fafafa', borderRadius: 3 }}
+                  >
+                    <CardContent>
+                      <Typography variant='h6' sx={{ fontWeight: 600, mb: 1 }}>
+                        {ctx.metadata.company_name}
+                      </Typography>
 
-                        <Divider sx={{ my: 1 }} />
+                      <Typography variant='body2'>
+                        <strong>Category:</strong> {ctx.metadata.risk_category}
+                        <br />
+                        <strong>Subcategory:</strong>{' '}
+                        {ctx.metadata.risk_subcategory}
+                        <br />
+                        <strong>Priority:</strong> {ctx.metadata.priority}
+                      </Typography>
 
-                        <Typography
-                          variant='body2'
-                          sx={{ whiteSpace: 'pre-wrap' }}
-                        >
-                          {ctx.content}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  ))}
-              </Box>
+                      <Divider sx={{ my: 1 }} />
+
+                      <Typography
+                        variant='body2'
+                        sx={{ whiteSpace: 'pre-wrap' }}
+                      >
+                        {ctx.content}
+                      </Typography>
+                    </CardContent>
+                  </Card>
+                ))}
+              </Paper>
             </Box>
           ))}
+
+          {/* Loading Indicator */}
+          {isLoading && (
+            <Box sx={{ display: 'flex', justifyContent: 'flex-start' }}>
+              <CircularProgress size={24} sx={{ m: 1 }} />
+            </Box>
+          )}
 
           <div ref={bottomRef} />
         </Box>
@@ -231,9 +343,15 @@ export default function RiskChat({ initialResponse }: RiskChatProps) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            disabled={isLoading}
           />
 
-          <IconButton color='primary' onClick={sendMessage} sx={{ ml: 1 }}>
+          <IconButton
+            color='primary'
+            onClick={sendMessage}
+            sx={{ ml: 1 }}
+            disabled={isLoading}
+          >
             <SendIcon />
           </IconButton>
         </Box>
