@@ -12,13 +12,17 @@ import {
   Card,
   CardContent,
   Divider,
-  CircularProgress, // Added for loading state
+  CircularProgress,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails, // Added for loading state
 } from '@mui/material';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 
 import SendIcon from '@mui/icons-material/Send';
 
 // API URL should point to your FastAPI service
-const API_URL = 'http://localhost:8000';
+const API_URL = 'http://localhost:8080';
 
 // --- Frontend Data Structures ---
 
@@ -137,9 +141,8 @@ export default function RiskChat({ initialResponse }: RiskChatProps) {
         ...prev.slice(0, prev.length - 1),
         {
           role: 'assistant',
-          content: `Sorry, an error occurred while processing your query. (Error: ${
-            error ?? 'Unknown'
-          })`,
+          content: `Sorry, an error occurred while processing your query. (Error: ${error ?? 'Unknown'
+            })`,
         },
       ]);
     } finally {
@@ -245,17 +248,44 @@ export default function RiskChat({ initialResponse }: RiskChatProps) {
                     __html: message.content.replace(/\n/g, '<br />'), // Optional: Convert \n to <br> for better newline display
                   }}
                   sx={{
-                    // Apply styles equivalent to Typography variant='body1' for proper display
+                    // 1. General Typography and Text Flow
                     typography: 'body1',
                     '& strong': {
                       fontWeight: 600, // Ensure bold text is prominent
                     },
-                    // Optional: Style the list items if the markdown is parsed into an unordered list
+
+                    // 2. STYLING FOR MARKDOWN HEADINGS (###)
+                    // Since the LLM output is "### 1. Section Title", we target the h3 tag
+                    '& h3': {
+                      // Apply distinct heading styling, similar to MUI's Typography h5/h6
+                      typography: 'h6',
+                      fontWeight: 700,
+                      marginTop: '1.5rem', // Add space above the section title
+                      marginBottom: '0.5rem',
+                      color: '#1976d2', // Use a primary color for clear separation (Blue)
+                      borderBottom: '2px solid #e0e0e0', // Add a separator line
+                      paddingBottom: '4px'
+                    },
+
+                    // 3. STYLING FOR MARKDOWN LISTS (*)
                     '& ul': {
                       paddingLeft: '20px',
                       marginTop: '8px',
                       marginBottom: '8px',
+                      // Optional: Narrow the list item typography slightly for the structured list (Section 2)
+                      '& li': {
+                        typography: 'body2',
+                        marginBottom: '4px',
+                      }
                     },
+
+                    // 4. STYLING FOR THE CUSTOM BOLDED HEADERS (like in Section 3)
+                    // This targets bolded text that the LLM uses as a sub-header
+                    '& p strong:first-child': {
+                      display: 'block',
+                      marginTop: '1rem',
+                      color: '#388e3c' // Green color for source/content clarity
+                    }
                   }}
                 />
                 {/* --- END OF FIX --- */}
@@ -284,36 +314,79 @@ export default function RiskChat({ initialResponse }: RiskChatProps) {
                     </Box>
                 )}*/}
 
-                {message.context?.map((ctx, i) => (
-                  <Card
-                    key={i}
-                    sx={{ mt: 2, bgcolor: '#fafafa', borderRadius: 3 }}
-                  >
-                    <CardContent>
-                      <Typography variant='h6' sx={{ fontWeight: 600, mb: 1 }}>
-                        {ctx.metadata.company_name}
-                      </Typography>
+                {message.context && message.context.length > 0 && (
+                  <Box sx={{ mt: 2 }}>
+                    <Typography variant="h6" sx={{ color: '#1976d2', fontWeight: 600, mb: 1 }}>
+                      {message.context.length} Retrieved Source Document{message.context.length > 1 ? 's' : ''}
+                    </Typography>
 
-                      <Typography variant='body2'>
-                        <strong>Category:</strong> {ctx.metadata.risk_category}
-                        <br />
-                        <strong>Subcategory:</strong>{' '}
-                        {ctx.metadata.risk_subcategory}
-                        <br />
-                        <strong>Priority:</strong> {ctx.metadata.priority}
-                      </Typography>
+                    {/* 1. SCENARIO: Multiple Context Items -> Use Accordions */}
+                    {message.context.length > 1 ? (
+                      <Box>
+                        {message.context.map((ctx, i) => (
+                          <Accordion
+                            key={i}
+                            defaultExpanded={i === 0} // Expand the first item by default
+                            sx={{ mt: 1, bgcolor: '#fafafa', borderRadius: 1 }}
+                          >
+                            <AccordionSummary
+                              expandIcon={<ExpandMoreIcon />}
+                              aria-controls={`panel-${i}-content`}
+                              id={`panel-${i}-header`}
+                            >
+                              <Typography variant='subtitle1' sx={{ fontWeight: 600 }}>
+                                Document {i + 1}: {ctx.metadata.company_name} - {ctx.metadata.risk_subcategory}
+                              </Typography>
+                            </AccordionSummary>
+                            <AccordionDetails sx={{ p: 2, pt: 0 }}>
+                              <Box sx={{ mb: 1 }}>
+                                <Typography variant='body2'>
+                                  <strong>Entity:</strong> {ctx.metadata.company_name}<br />
+                                  <strong>Category:</strong> {ctx.metadata.risk_category}<br />
+                                  <strong>Subcategory:</strong> {ctx.metadata.risk_subcategory}<br />
+                                  <strong>Priority:</strong> {ctx.metadata.priority}
+                                </Typography>
+                              </Box>
 
-                      <Divider sx={{ my: 1 }} />
+                              <Divider sx={{ my: 1 }} />
 
-                      <Typography
-                        variant='body2'
-                        sx={{ whiteSpace: 'pre-wrap' }}
-                      >
-                        {ctx.content}
-                      </Typography>
-                    </CardContent>
-                  </Card>
-                ))}
+                              <Typography
+                                variant='body2'
+                                sx={{ whiteSpace: 'pre-wrap' }}
+                              >
+                                {ctx.content}
+                              </Typography>
+                            </AccordionDetails>
+                          </Accordion>
+                        ))}
+                      </Box>
+                    ) : (
+                      /* 2. SCENARIO: Single Context Item -> Use simple Card */
+                      <Card sx={{ mt: 1, bgcolor: '#fafafa', borderRadius: 3 }}>
+                        <CardContent>
+                          <Typography variant='h6' sx={{ fontWeight: 600, mb: 1 }}>
+                            {message.context[0].metadata.company_name}
+                          </Typography>
+
+                          <Typography variant='body2'>
+                            <strong>Category:</strong> {message.context[0].metadata.risk_category}<br />
+                            <strong>Subcategory:</strong> {message.context[0].metadata.risk_subcategory}<br />
+                            <strong>Priority:</strong> {message.context[0].metadata.priority}
+                          </Typography>
+
+                          <Divider sx={{ my: 1 }} />
+
+                          <Typography
+                            variant='body2'
+                            sx={{ whiteSpace: 'pre-wrap' }}
+                          >
+                            {message.context[0].content}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    )}
+                  </Box>
+                )}
               </Paper>
             </Box>
           ))}
